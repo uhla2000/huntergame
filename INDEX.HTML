@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Hunter vs Lions</title>
+<style>
+body { margin:0; overflow:hidden; background:black; font-family:Arial; }
+
+canvas { display:block; }
+
+#menu, #gameover {
+    position:absolute;
+    width:100%;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    color:white;
+    background:rgba(0,0,0,0.8);
+}
+
+button {
+    padding:15px 30px;
+    font-size:20px;
+    cursor:pointer;
+    margin-top:10px;
+}
+
+#hud {
+    position:absolute;
+    top:10px;
+    left:10px;
+    color:white;
+}
+</style>
+</head>
+<body>
+
+<div id="menu">
+    <h1>Hunter vs Lions</h1>
+    <button onclick="startGame()">Jogar</button>
+</div>
+
+<div id="gameover" style="display:none;">
+    <h1>Game Over</h1>
+    <p id="finalScore"></p>
+    <button onclick="restartGame()">Reiniciar</button>
+</div>
+
+<div id="hud" style="display:none;">
+    Pontos: <span id="score">0</span><br>
+    Vida: <span id="life">100</span>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// =================
+// ESTADO
+// =================
+let gameState = "menu";
+let score = 0;
+let life = 100;
+let lions = [];
+let bullets = [];
+let keys = {};
+
+const sprite = new Image();
+sprite.src = "spritesheet.png";
+
+// =================
+// PLAYER
+// =================
+const player = {
+    x: canvas.width/2,
+    y: canvas.height/2,
+    speed: 4,
+    frame: 0,
+    direction: "right"
+};
+
+// =================
+// CONTROLES
+// =================
+document.addEventListener("keydown", e => {
+    keys[e.key] = true;
+
+    if (e.key === "Escape" && gameState === "playing") {
+        gameState = "paused";
+    } else if (e.key === "Escape" && gameState === "paused") {
+        gameState = "playing";
+    }
+});
+
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// TIRO
+canvas.addEventListener("click", (e) => {
+    if (gameState !== "playing") return;
+
+    const angle = Math.atan2(e.clientY - player.y, e.clientX - player.x);
+
+    bullets.push({
+        x: player.x,
+        y: player.y,
+        dx: Math.cos(angle)*10,
+        dy: Math.sin(angle)*10
+    });
+});
+
+// =================
+// SPAWN
+// =================
+function spawnLion() {
+    let side = Math.floor(Math.random()*4);
+
+    let lion = {
+        x: 0,
+        y: 0,
+        speed: 1 + Math.random()*2,
+        frame: 0
+    };
+
+    if (side === 0) { lion.x = -50; lion.y = Math.random()*canvas.height; }
+    if (side === 1) { lion.x = canvas.width+50; lion.y = Math.random()*canvas.height; }
+    if (side === 2) { lion.x = Math.random()*canvas.width; lion.y = -50; }
+    if (side === 3) { lion.x = Math.random()*canvas.width; lion.y = canvas.height+50; }
+
+    lions.push(lion);
+}
+
+// =================
+// UPDATE
+// =================
+function update() {
+
+    if (gameState !== "playing") return;
+
+    // movimento
+    if (keys["w"]) player.y -= player.speed;
+    if (keys["s"]) player.y += player.speed;
+    if (keys["a"]) { player.x -= player.speed; player.direction="left"; }
+    if (keys["d"]) { player.x += player.speed; player.direction="right"; }
+
+    // tiros
+    bullets.forEach((b,i)=>{
+        b.x += b.dx;
+        b.y += b.dy;
+
+        if (b.x<0||b.x>canvas.width||b.y<0||b.y>canvas.height){
+            bullets.splice(i,1);
+        }
+    });
+
+    // leões
+    lions.forEach((lion,li)=>{
+        let dx = player.x - lion.x;
+        let dy = player.y - lion.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+
+        lion.x += (dx/dist)*lion.speed;
+        lion.y += (dy/dist)*lion.speed;
+
+        if (dist < 40) {
+            life -= 0.5;
+            document.getElementById("life").innerText = Math.floor(life);
+        }
+
+        bullets.forEach((b,bi)=>{
+            let d = Math.hypot(b.x-lion.x, b.y-lion.y);
+
+            if (d < 40){
+                lions.splice(li,1);
+                bullets.splice(bi,1);
+                score++;
+                document.getElementById("score").innerText = score;
+            }
+        });
+
+        lion.frame += 0.2;
+    });
+
+    if (life <= 0){
+        gameState = "gameover";
+        document.getElementById("gameover").style.display="flex";
+        document.getElementById("finalScore").innerText="Pontos: "+score;
+    }
+}
+
+// =================
+// DRAW
+// =================
+function draw() {
+
+    ctx.fillStyle="#1b5e20";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // tiros
+    ctx.fillStyle="yellow";
+    bullets.forEach(b=>{
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,4,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    // player
+    let py = player.direction==="right"?200:450;
+
+    ctx.drawImage(sprite,
+        Math.floor(player.frame)*120, py,
+        120,150,
+        player.x-40, player.y-40,
+        80,80
+    );
+
+    player.frame+=0.2;
+    if (player.frame>=8) player.frame=0;
+
+    // leões
+    lions.forEach(lion=>{
+        ctx.drawImage(sprite,
+            Math.floor(lion.frame)*200, 900,
+            200,120,
+            lion.x-40, lion.y-40,
+            80,80
+        );
+    });
+
+    if (gameState==="paused"){
+        ctx.fillStyle="white";
+        ctx.font="40px Arial";
+        ctx.fillText("PAUSADO", canvas.width/2-100, canvas.height/2);
+    }
+}
+
+// =================
+// LOOP
+// =================
+let lastSpawn = 0;
+
+function loop(time){
+
+    if (gameState==="playing" && time-lastSpawn>1000){
+        spawnLion();
+        lastSpawn=time;
+    }
+
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+// =================
+// MENU
+// =================
+function startGame(){
+    document.getElementById("menu").style.display="none";
+    document.getElementById("hud").style.display="block";
+    gameState="playing";
+}
+
+function restartGame(){
+    location.reload();
+}
+
+sprite.onload = ()=>loop();
+</script>
+
+</body>
+</html>
